@@ -1,8 +1,10 @@
 {
-    "source_folder": "/Volumes/OBS",
-    "backtrack_folder": "/Volumes/OBS/Clips/Vertical Clips",
-    "replay_folder": "/Volumes/OBS/Clips/Clips",
-    "recording_folder": "/Volumes/OBS/Videos",
-    "auto_delete": true,
-    "delete_length_minutes": 12
+    "source_folder": "E:/OBS",
+    "backtrack_folder": "E:/OBS/Clips/Vertical Clips",
+    "replay_folder": "E:/OBS/Clips/Clips",
+    "recording_folder": "E:/OBS/Videos",
+    "auto_delete": false,
+    "delete_length_minutes": 12,
+    "auto_delete_folders": true,
+    "delete_length_days": 14
 }

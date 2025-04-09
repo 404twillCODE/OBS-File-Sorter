@@ -1,0 +1,17 @@
+2025-03-31 19:11:31,331 - INFO - Using two-window approach for taskbar integration
+2025-03-31 19:11:31,405 - INFO - Starting hotkey listener...
+2025-03-31 19:11:31,406 - INFO - Checking for folders older than 14 days
+2025-03-31 19:11:31,407 - WARNING - Folder not found or not configured: E:/OBS/Clips/Vertical Clips
+2025-03-31 19:11:31,407 - WARNING - Folder not found or not configured: E:/OBS/Clips/Clips
+2025-03-31 19:11:31,407 - WARNING - Folder not found or not configured: E:/OBS/Videos
+2025-03-31 19:11:31,408 - DEBUG - Folder cleanup complete, waiting 24 hours before next check
+2025-03-31 19:11:32,293 - INFO - Hotkeys registered successfully
+2025-03-31 19:11:32,295 - INFO - Listening for F9 and F14 hotkeys. Press ESC to exit.
+2025-03-31 19:13:17,267 - INFO - Starting hotkey listener...
+2025-03-31 19:13:17,268 - INFO - Checking for folders older than 14 days
+2025-03-31 19:13:17,268 - WARNING - Folder not found or not configured: E:/OBS/Clips/Vertical Clips
+2025-03-31 19:13:17,268 - WARNING - Folder not found or not configured: E:/OBS/Clips/Clips
+2025-03-31 19:13:17,269 - WARNING - Folder not found or not configured: E:/OBS/Videos
+2025-03-31 19:13:17,269 - DEBUG - Folder cleanup complete, waiting 24 hours before next check
+2025-03-31 19:13:18,002 - INFO - Hotkeys registered successfully
+2025-03-31 19:13:18,002 - INFO - Listening for F9 and F14 hotkeys. Press ESC to exit.

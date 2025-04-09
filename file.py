@@ -10,6 +10,41 @@ import threading
 import time
 import keyboard  # New library for hotkey detection
 import sys
+import logging
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    
+    result_path = os.path.join(base_path, relative_path)
+    logger.debug(f"Resource path for {relative_path}: {result_path}")
+    return result_path
+
+# Set up logging
+def setup_logging():
+    try:
+        log_file = "obs_sorter.log"
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
+        return logging.getLogger(__name__)
+    except Exception as e:
+        print(f"Error setting up logging: {e}")
+        # Fallback basic logging configuration
+        logging.basicConfig(level=logging.DEBUG)
+        return logging.getLogger(__name__)
+
+logger = setup_logging()
+logger.info("Application starting...")
 
 CONFIG_FILE = "obs_auto_sorter_config.json"
 
@@ -71,7 +106,9 @@ class OBSAutoSorterApp:
             "replay_folder": "",
             "recording_folder": "",
             "auto_delete": False,
-            "delete_length_minutes": 5
+            "delete_length_minutes": 5,
+            "auto_delete_folders": False,
+            "delete_length_days": 14
         }
 
         # Load configurations from JSON
@@ -80,14 +117,23 @@ class OBSAutoSorterApp:
         # Create UI Components
         self.create_header()
         self.create_folder_sections()
-        self.create_auto_delete_section()
         self.create_action_buttons()
 
         # Add hover and click effects
         self.add_hover_effects()
 
         # Start the hotkey listener in a separate thread
-        threading.Thread(target=self.listen_for_hotkeys, daemon=True).start()
+        self.hotkey_thread = threading.Thread(target=self.listen_for_hotkeys, daemon=True)
+        self.hotkey_thread.start()
+
+        # Start auto-delete thread if enabled
+        self.start_auto_delete_thread()
+
+        # Start old folder delete thread if enabled
+        self.start_old_folder_delete_thread()
+
+        # Bind window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def create_title_bar(self):
         # Custom title bar with minimize, maximize, close buttons
@@ -236,140 +282,18 @@ class OBSAutoSorterApp:
             # Pre-fill the folder entries
             entry.insert(0, self.configurations[config_key])
 
-    def create_auto_delete_section(self):
-        # Auto-delete section with modern toggle switch
-        auto_delete_frame = tk.Frame(self.main_frame, bg=self.colors["background"])
-        auto_delete_frame.pack(fill=tk.X, pady=10)
-
-        # Custom toggle switch
-        self.auto_delete_var = tk.BooleanVar(value=self.configurations["auto_delete"])
-        
-        # Toggle switch container
-        toggle_container = tk.Frame(auto_delete_frame, bg=self.colors["background"])
-        toggle_container.pack(side=tk.LEFT, padx=(0, 20))
-
-        # Visual toggle switch
-        self.toggle_switch = tk.Frame(
-            toggle_container, 
-            width=50, 
-            height=20, 
-            bg=self.colors["surface"]
-        )
-        self.toggle_switch.pack(side=tk.LEFT)
-        self.toggle_switch.pack_propagate(False)
-        self.toggle_switch.grid_propagate(False)
-
-        # Toggle switch handle
-        self.toggle_handle = tk.Frame(
-            self.toggle_switch, 
-            width=20, 
-            height=20, 
-            bg=self.colors["text_secondary"]
-        )
-        self.toggle_handle.place(x=0, y=0)
-
-        # Delete length label and entry
-        delete_label = tk.Label(
-            auto_delete_frame, 
-            text="Auto-Delete Length:", 
-            font=self.fonts["body"], 
-            fg=self.colors["text_primary"], 
-            bg=self.colors["background"]
-        )
-        delete_label.pack(side=tk.LEFT, padx=(0, 10))
-
-        self.auto_delete_length_entry = tk.Entry(
-            auto_delete_frame, 
-            width=10, 
-            font=self.fonts["mono"],
-            bg=self.colors["surface"],  # Always keep dark background
-            fg=self.colors["text_primary"], 
-            insertbackground=self.colors["primary"],
-            relief=tk.FLAT,
-            highlightthickness=1,
-            highlightcolor=self.colors["secondary"],
-            highlightbackground=self.colors["surface"],
-            disabledbackground=self.colors["surface"],
-            disabledforeground=self.colors["text_secondary"]
-        )
-        self.auto_delete_length_entry.pack(side=tk.LEFT)
-
-        # Function to validate and save auto-delete length
-        def validate_and_save_length(event=None):
-            try:
-                length = int(self.auto_delete_length_entry.get())
-                if 1 <= length <= 1440:
-                    self.configurations["delete_length_minutes"] = length
-                    self.save_configurations()
-                else:
-                    # Reset to previous value if invalid
-                    self.auto_delete_length_entry.delete(0, tk.END)
-                    self.auto_delete_length_entry.insert(0, str(self.configurations.get("delete_length_minutes", 5)))
-            except ValueError:
-                # Reset to previous value if not a valid integer
-                self.auto_delete_length_entry.delete(0, tk.END)
-                self.auto_delete_length_entry.insert(0, str(self.configurations.get("delete_length_minutes", 5)))
-            
-            # Remove focus and stop cursor blinking
-            self.auto_delete_length_entry.config(
-                insertbackground=self.colors["background"]
-            )
-            self.main_frame.focus()
-
-        # Bind focus out event
-        self.auto_delete_length_entry.bind("<FocusOut>", validate_and_save_length)
-
-        # Toggle function
-        def toggle_auto_delete(event=None):
-            # Toggle the state
-            current_state = self.auto_delete_var.get()
-            new_state = not current_state
-            self.auto_delete_var.set(new_state)
-            
-            # Update configuration
-            self.configurations["auto_delete"] = new_state
-            self.save_configurations()
-
-            if new_state:
-                # Enabled state
-                self.toggle_handle.place(x=30, y=0)
-                self.toggle_switch.config(bg=self.colors["success"])
-                self.toggle_handle.config(bg=self.colors["text_primary"])
-                self.auto_delete_length_entry.config(state='normal')
-            else:
-                # Disabled state
-                self.toggle_handle.place(x=0, y=0)
-                self.toggle_switch.config(bg=self.colors["surface"])
-                self.toggle_handle.config(bg=self.colors["text_secondary"])
-                self.auto_delete_length_entry.config(state='disabled')
-                
-                # Reset entry to original value
-                self.auto_delete_length_entry.delete(0, tk.END)
-                self.auto_delete_length_entry.insert(0, str(self.configurations.get("delete_length_minutes", 5)))
-
-        # Bind click events to toggle switch
-        self.toggle_switch.bind("<Button-1>", toggle_auto_delete)
-        self.toggle_handle.bind("<Button-1>", toggle_auto_delete)
-        
-        # Set initial state
-        if self.configurations["auto_delete"]:
-            self.toggle_handle.place(x=30, y=0)
-            self.toggle_switch.config(bg=self.colors["success"])
-            self.toggle_handle.config(bg=self.colors["text_primary"])
-        else:
-            self.auto_delete_length_entry.config(state='disabled')
-        
-        # Pre-fill the entry
-        self.auto_delete_length_entry.insert(0, str(self.configurations.get("delete_length_minutes", 5)))
-
     def create_action_buttons(self):
         # Action buttons section with advanced styling
         action_frame = tk.Frame(self.main_frame, bg=self.colors["background"])
         action_frame.pack(fill=tk.X, pady=(20, 0))
 
+        # Create a frame for buttons to place them side by side
+        button_frame = tk.Frame(action_frame, bg=self.colors["background"])
+        button_frame.pack(expand=True, fill=tk.X)
+
         # Gradient-like sort button
         sort_button = tk.Button(
-            action_frame, 
+            button_frame, 
             text="Sort Clips", 
             command=self.run_sorter,
             font=self.fonts["header"],
@@ -381,7 +305,23 @@ class OBSAutoSorterApp:
             pady=10,
             borderwidth=0
         )
-        sort_button.pack(expand=True)
+        sort_button.pack(side=tk.LEFT, expand=True, padx=10)
+
+        # Settings button
+        settings_button = tk.Button(
+            button_frame, 
+            text="Settings", 
+            command=self.create_settings_menu,
+            font=self.fonts["header"],
+            bg=self.colors["secondary"], 
+            fg=self.colors["background"], 
+            activebackground=self.colors["primary"],
+            relief=tk.FLAT,
+            padx=20,
+            pady=10,
+            borderwidth=0
+        )
+        settings_button.pack(side=tk.LEFT, expand=True, padx=10)
 
         # Status label with modern typography
         self.status_label = tk.Label(
@@ -445,10 +385,16 @@ class OBSAutoSorterApp:
 
     def save_configurations(self):
         """Save configurations to a JSON file."""
-        self.configurations["auto_delete"] = self.auto_delete_var.get()
-        self.configurations["delete_length_minutes"] = int(self.auto_delete_length_entry.get())
-        with open(CONFIG_FILE, "w") as config_file:
-            json.dump(self.configurations, config_file, indent=4)
+        try:
+            # Always save to the local directory
+            config_path = os.path.join(os.path.abspath("."), CONFIG_FILE)
+            logger.debug(f"Saving configuration to: {config_path}")
+            with open(config_path, "w") as config_file:
+                json.dump(self.configurations, config_file, indent=4)
+            logger.info("Configuration saved successfully")
+        except Exception as e:
+            logger.error(f"Error saving configuration file: {e}", exc_info=True)
+            print(f"Error saving configuration file: {e}")
 
     def load_configurations(self):
         """Load configurations from a JSON file."""
@@ -458,108 +404,664 @@ class OBSAutoSorterApp:
             "replay_folder": "",
             "recording_folder": "",
             "auto_delete": False,
-            "delete_length_minutes": 5  # Default to 5 minutes
+            "delete_length_minutes": 5,  # Default to 5 minutes
+            "auto_delete_folders": False,  # New configuration for folder deletion
+            "delete_length_days": 14  # New configuration for folder deletion days
         }
 
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, "r") as config_file:
-                    loaded_config = json.load(config_file)
-                    self.configurations.update({**default_configurations, **loaded_config})
-            except json.JSONDecodeError:
-                print("Error reading configuration file. Using default settings.")
+        try:
+            # Try to load from executable directory first
+            local_config = os.path.join(os.path.abspath("."), CONFIG_FILE)
+            bundled_config = resource_path(CONFIG_FILE)
+            
+            logger.debug(f"Looking for config file at: {local_config}")
+            logger.debug(f"Alternative path: {bundled_config}")
+            
+            # Prioritize local config over bundled
+            if os.path.exists(local_config):
+                config_path = local_config
+                logger.info(f"Using local configuration file: {local_config}")
+            elif os.path.exists(bundled_config):
+                config_path = bundled_config
+                logger.info(f"Using bundled configuration file: {bundled_config}")
+            else:
+                logger.warning("No configuration file found, creating default")
                 self.configurations = default_configurations
-        else:
+                self.save_configurations()
+                return
+                
+            with open(config_path, "r") as config_file:
+                loaded_config = json.load(config_file)
+                logger.debug(f"Loaded configuration: {loaded_config}")
+                self.configurations.update({**default_configurations, **loaded_config})
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing JSON in configuration file: {e}", exc_info=True)
             self.configurations = default_configurations
+            self.save_configurations()
+        except Exception as e:
+            logger.error(f"Error loading configuration file: {e}", exc_info=True)
+            print(f"Error reading configuration file: {e}")
+            self.configurations = default_configurations
+            self.save_configurations()
 
     def run_sorter(self):
+        logger.info("Starting sorting process...")
+        
+        # Update status
+        self.status_label.config(text="Sorting in progress...")
+        self.root.update()
+        
         source_folder = self.source_folder_entry.get()
         backtrack_folder = self.backtrack_folder_entry.get()
         replay_folder = self.replay_folder_entry.get()
         recording_folder = self.recording_folder_entry.get()
-        auto_delete = self.auto_delete_var.get()
+        
+        # Get auto-delete settings from configurations
+        auto_delete = self.configurations.get("auto_delete", False)
+        delete_length_minutes = self.configurations.get("delete_length_minutes", 5)
+        delete_length_seconds = delete_length_minutes * 60
 
-        try:
-            delete_length_minutes = int(self.auto_delete_length_entry.get())
-            delete_length_seconds = delete_length_minutes * 60  # Convert minutes to seconds
-        except ValueError:
-            messagebox.showerror("Error", "Please enter a valid number for auto-delete length in minutes.")
-            return
+        logger.debug(f"Source folder: {source_folder}")
+        logger.debug(f"Backtrack folder: {backtrack_folder}")
+        logger.debug(f"Replay folder: {replay_folder}")
+        logger.debug(f"Recording folder: {recording_folder}")
+        logger.debug(f"Auto delete enabled: {auto_delete}")
+        logger.debug(f"Delete length set to {delete_length_minutes} minutes")
 
         if not all([source_folder, backtrack_folder, replay_folder, recording_folder]):
+            logger.error("One or more folders not selected")
             messagebox.showerror("Error", "Please select all required folders.")
+            self.status_label.config(text="Error: Missing folder selection")
             return
 
-        date_folder = datetime.now().strftime("%Y-%m-%d")  # Current date as folder name
+        if not os.path.exists(source_folder):
+            logger.error(f"Source folder does not exist: {source_folder}")
+            messagebox.showerror("Error", f"Source folder does not exist: {source_folder}")
+            self.status_label.config(text="Error: Source folder not found")
+            return
 
-        for filename in os.listdir(source_folder):
+        try:
+            files = os.listdir(source_folder)
+            logger.info(f"Found {len(files)} files in source folder")
+            
+            # Filter for .mp4 files
+            mp4_files = [f for f in files if f.lower().endswith('.mp4')]
+            logger.info(f"Found {len(mp4_files)} .mp4 files")
+            
+            if not mp4_files:
+                logger.info("No .mp4 files found to process")
+                messagebox.showinfo("Info", "No .mp4 files found to process")
+                self.status_label.config(text="No .mp4 files found")
+                return
+                
+        except Exception as e:
+            logger.error(f"Error reading source folder: {e}")
+            messagebox.showerror("Error", f"Could not read source folder: {str(e)}")
+            self.status_label.config(text="Error: Couldn't read source folder")
+            return
+
+        # Variable to track if we processed any files successfully
+        files_processed = 0
+        files_skipped = 0
+
+        for filename in mp4_files:
             file_path = os.path.join(source_folder, filename)
+            logger.debug(f"Processing file: {filename}")
 
-            # Process only .mkv files
-            if os.path.isfile(file_path) and filename.lower().endswith('.mkv'):
+            try:
+                # Get file creation/modification date
                 try:
-                    video_length = self.get_video_length(file_path)
-
-                    # Determine target folder and create date folder
-                    if "backtrack" in filename.lower():
-                        target_folder = os.path.join(backtrack_folder, date_folder)
-                    elif "replay" in filename.lower():
-                        target_folder = os.path.join(replay_folder, date_folder)
-                    else:
-                        target_folder = os.path.join(recording_folder, date_folder)
-
-                    os.makedirs(target_folder, exist_ok=True)
-
-                    # Handle auto-delete condition, ignoring "backtrack" and "replay"
-                    if auto_delete and video_length <= delete_length_seconds:
-                        if "backtrack" not in filename.lower() and "replay" not in filename.lower():
-                            os.remove(file_path)
-                            print(f"File {filename} deleted (length <= {delete_length_minutes} minutes).")
-                            continue
-
-                    # Generate sequential filename
-                    existing_files = os.listdir(target_folder)
-                    file_index = len(existing_files) + 1
-                    new_filename = f"{file_index:03}.mkv"
-                    target_path = os.path.join(target_folder, new_filename)
-
-                    shutil.move(file_path, target_path)
-                    print(f"File {filename} renamed to {new_filename} and moved to {target_folder}.")
+                    # Get the file's modification time
+                    file_mtime = os.path.getmtime(file_path)
+                    file_date = datetime.fromtimestamp(file_mtime)
+                    date_folder = file_date.strftime("%Y-%m-%d")
+                    logger.debug(f"File date: {date_folder}")
                 except Exception as e:
-                    print(f"Error processing file {filename}: {e}")
+                    logger.error(f"Error getting file date, using current date: {e}")
+                    date_folder = datetime.now().strftime("%Y-%m-%d")
 
-        # Save configurations after sorting
+                try:
+                    logger.debug(f"Getting video length for: {filename}")
+                    video_length = self.get_video_length(file_path)
+                    logger.debug(f"Video length: {video_length} seconds")
+                except Exception as e:
+                    logger.error(f"Error getting video length, assuming valid length: {e}")
+                    # Just assume it's a valid length if we can't determine it
+                    video_length = delete_length_seconds + 1
+
+                # Determine target folder
+                if "backtrack" in filename.lower():
+                    target_folder = os.path.join(backtrack_folder, date_folder)
+                    logger.debug("File identified as backtrack")
+                elif "replay" in filename.lower():
+                    target_folder = os.path.join(replay_folder, date_folder)
+                    logger.debug("File identified as replay")
+                else:
+                    target_folder = os.path.join(recording_folder, date_folder)
+                    logger.debug("File identified as regular recording")
+
+                logger.debug(f"Target folder: {target_folder}")
+                os.makedirs(target_folder, exist_ok=True)
+
+                # Handle auto-delete
+                if auto_delete and video_length <= delete_length_seconds:
+                    if "backtrack" not in filename.lower() and "replay" not in filename.lower():
+                        logger.info(f"Deleting short file: {filename} ({video_length} seconds)")
+                        os.remove(file_path)
+                        files_skipped += 1
+                        continue
+
+                # Generate new filename
+                existing_files = os.listdir(target_folder)
+                file_index = len(existing_files) + 1
+                new_filename = f"{file_index:03}.mp4"
+                target_path = os.path.join(target_folder, new_filename)
+                logger.debug(f"Moving file to: {target_path}")
+
+                shutil.move(file_path, target_path)
+                logger.info(f"Successfully moved {filename} to {new_filename}")
+                files_processed += 1
+
+            except Exception as e:
+                logger.error(f"Error processing file {filename}: {e}", exc_info=True)
+                files_skipped += 1
+                print(f"Error processing file {filename}: {e}")
+
+        logger.info(f"Sorting process completed. Processed: {files_processed}, Skipped/Deleted: {files_skipped}")
+        self.status_label.config(text=f"Complete: {files_processed} files sorted, {files_skipped} skipped/deleted")
         self.save_configurations()
+        # messagebox.showinfo("Complete", f"Sorting process completed! {files_processed} files sorted.")
 
     def get_video_length(self, file_path):
         """Get the length of a video file in seconds using FFprobe."""
         try:
+            logger.debug(f"Running FFprobe on: {file_path}")
+            
+            # First, check if ffprobe is available
+            try:
+                subprocess.run(
+                    ["ffprobe", "-version"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=1
+                )
+            except (subprocess.SubprocessError, FileNotFoundError):
+                logger.error("FFprobe not available")
+                # Return a value that won't trigger auto-delete
+                return 999999
+                
             result = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                timeout=10  # Add timeout to prevent hanging
             )
-            return float(result.stdout.strip())
+            if result.returncode != 0:
+                logger.error(f"FFprobe error: {result.stderr}")
+                # Return a value that won't trigger auto-delete
+                return 999999
+                
+            duration = float(result.stdout.strip())
+            logger.debug(f"FFprobe returned duration: {duration} seconds")
+            return duration
         except Exception as e:
-            print(f"Error retrieving video length for {file_path}: {e}")
-            return 0
+            logger.error(f"Error getting video length for {file_path}: {e}", exc_info=True)
+            # Return a value that won't trigger auto-delete
+            return 999999
+
+    def on_closing(self):
+        """Handle window closing event"""
+        logger.info("Application closing...")
+        self.root.quit()
 
     def delayed_sort(self):
         """Run the sorter with a 5-second delay."""
+        logger.info("Hotkey pressed! Starting delayed sort...")
         print("F9 or F14 pressed! Sorting will start in 5 seconds...")
-        time.sleep(5)
-        self.run_sorter()
+        # Use after() to schedule the sort in the main thread
+        self.root.after(5000, self.run_sorter)
 
     def listen_for_hotkeys(self):
         """Listen for F9 and F14 hotkeys and trigger the delayed_sort method."""
-        # Add hotkeys
-        keyboard.add_hotkey("f9", self.delayed_sort)
-        keyboard.add_hotkey("f14", self.delayed_sort)
+        logger.info("Starting hotkey listener...")
+        try:
+            # Add hotkeys with error handling
+            try:
+                keyboard.add_hotkey("f9", self.delayed_sort)
+                logger.info("F9 hotkey registered successfully")
+            except Exception as e:
+                logger.error(f"Error registering F9 hotkey: {e}", exc_info=True)
+                
+            try:
+                keyboard.add_hotkey("f14", self.delayed_sort)
+                logger.info("F14 hotkey registered successfully")
+            except Exception as e:
+                logger.error(f"Error registering F14 hotkey: {e}", exc_info=True)
 
-        # Keep the program running
-        print("Listening for F9 and F14 hotkeys. Press ESC to exit.")
-        keyboard.wait("esc")
+            # Keep the program running
+            logger.info("Hotkey listener running. Press ESC to exit.")
+            
+            # Use a safer approach than wait() which can block
+            while True:
+                if keyboard.is_pressed("esc"):
+                    logger.info("ESC pressed, exiting hotkey listener")
+                    break
+                time.sleep(0.1)  # Sleep to reduce CPU usage
+                
+        except Exception as e:
+            logger.error(f"Error in hotkey listener: {e}", exc_info=True)
+
+    def start_auto_delete_thread(self):
+        if self.configurations["auto_delete"]:
+            threading.Thread(target=self.auto_delete_files, daemon=True).start()
+
+    def start_old_folder_delete_thread(self):
+        if self.configurations["auto_delete_folders"]:
+            threading.Thread(target=self.delete_old_folders, daemon=True).start()
+
+    def auto_delete_files(self):
+        while True:
+            try:
+                # Get delete length from configurations instead of UI element
+                delete_length_minutes = self.configurations.get("delete_length_minutes", 5)
+                delete_length_seconds = delete_length_minutes * 60  # Convert minutes to seconds
+                
+                source_folder = self.configurations.get("source_folder", "")
+                if not source_folder or not os.path.exists(source_folder):
+                    logger.warning(f"Source folder not found or not configured: {source_folder}")
+                    time.sleep(60)
+                    continue
+
+                for filename in os.listdir(source_folder):
+                    file_path = os.path.join(source_folder, filename)
+
+                    # Process only .mp4 files
+                    if os.path.isfile(file_path) and filename.lower().endswith('.mp4'):
+                        try:
+                            video_length = self.get_video_length(file_path)
+
+                            if video_length <= delete_length_seconds:
+                                if "backtrack" not in filename.lower() and "replay" not in filename.lower():
+                                    os.remove(file_path)
+                                    logger.info(f"Auto-delete: File {filename} deleted (length <= {delete_length_minutes} minutes).")
+                        except Exception as e:
+                            logger.error(f"Error in auto-delete process for file {filename}: {e}")
+
+            except Exception as e:
+                logger.error(f"Error in auto_delete_files: {e}", exc_info=True)
+            
+            time.sleep(60)  # Check every minute
+
+    def delete_old_folders(self):
+        """Periodically delete old folders based on the configuration."""
+        while True:
+            try:
+                # Get the number of days from configurations
+                delete_days = self.configurations.get('delete_length_days', 14)
+                logger.info(f"Checking for folders older than {delete_days} days")
+
+                folders = [
+                    self.configurations.get("backtrack_folder", ""),
+                    self.configurations.get("replay_folder", ""),
+                    self.configurations.get("recording_folder", "")
+                ]
+
+                for folder in folders:
+                    if not folder or not os.path.exists(folder):
+                        logger.warning(f"Folder not found or not configured: {folder}")
+                        continue
+
+                    logger.debug(f"Checking for old folders in: {folder}")
+                    for date_folder in os.listdir(folder):
+                        date_folder_path = os.path.join(folder, date_folder)
+
+                        if os.path.isdir(date_folder_path):
+                            try:
+                                # Try to parse the folder name as a date (YYYY-MM-DD format)
+                                date_folder_date = datetime.strptime(date_folder, "%Y-%m-%d")
+                                days_old = (datetime.now() - date_folder_date).days
+                                
+                                if days_old > delete_days:
+                                    logger.info(f"Deleting folder {date_folder_path} (age: {days_old} days)")
+                                    shutil.rmtree(date_folder_path)
+                            except ValueError:
+                                logger.warning(f"Folder {date_folder_path} does not match date format, skipping")
+                            except Exception as e:
+                                logger.error(f"Error deleting folder {date_folder_path}: {e}")
+
+            except Exception as e:
+                logger.error(f"Error in delete_old_folders: {e}", exc_info=True)
+
+            # Check once per day
+            logger.debug("Folder cleanup complete, waiting 24 hours before next check")
+            time.sleep(86400)
+
+    def create_settings_menu(self):
+        """
+        Create a settings menu with modern, app-consistent design.
+        Overlays the main program at the same position and size.
+        """
+        # Create settings window
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Settings")
+        
+        # Match main window geometry and position
+        settings_window.geometry(self.root.geometry())
+        settings_window.configure(bg=self.colors["background"])
+        settings_window.overrideredirect(True)  # Removes default window decorations
+        
+        # Position the settings window exactly over the main window
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+        settings_window.geometry(f"+{x}+{y}")
+    
+        # Window movement variables
+        self.settings_window_x = 0
+        self.settings_window_y = 0
+    
+        # Custom title bar
+        title_bar = tk.Frame(settings_window, bg=self.colors["surface"], height=30)
+        title_bar.pack(fill=tk.X)
+        title_bar.pack_propagate(False)
+    
+        # Minimize button
+        minimize_btn = tk.Button(
+            title_bar, 
+            text="—", 
+            bg=self.colors["surface"], 
+            fg=self.colors["text_primary"],
+            font=("Arial", 10, "bold"),
+            borderwidth=0,
+            command=lambda: settings_window.iconify()
+        )
+        minimize_btn.pack(side=tk.LEFT, padx=5)
+    
+        # App title
+        title_label = tk.Label(
+            title_bar, 
+            text="Settings", 
+            bg=self.colors["surface"], 
+            fg=self.colors["text_primary"], 
+            font=self.fonts["subtitle"]
+        )
+        title_label.pack(side=tk.LEFT, padx=10)
+    
+        # Close button
+        close_btn = tk.Button(
+            title_bar, 
+            text="✕", 
+            bg=self.colors["surface"], 
+            fg=self.colors["accent"],
+            font=("Arial", 10, "bold"),
+            borderwidth=0,
+            command=settings_window.destroy
+        )
+        close_btn.pack(side=tk.RIGHT, padx=5)
+    
+        # Window movement functions
+        def start_move(event):
+            """Start window movement tracking"""
+            self.settings_window_x = event.x
+            self.settings_window_y = event.y
+    
+        def stop_move(event):
+            """Stop window movement tracking"""
+            self.settings_window_x = None
+            self.settings_window_y = None
+    
+        def do_move(event):
+            """Move the window when dragging the title bar"""
+            if self.settings_window_x is not None and self.settings_window_y is not None:
+                x = settings_window.winfo_x() + (event.x - self.settings_window_x)
+                y = settings_window.winfo_y() + (event.y - self.settings_window_y)
+                settings_window.geometry(f"+{x}+{y}")
+    
+        # Bind movement events to title bar
+        title_bar.bind("<ButtonPress-1>", start_move)
+        title_bar.bind("<ButtonRelease-1>", stop_move)
+        title_bar.bind("<B1-Motion>", do_move)
+    
+        # Main settings container
+        settings_container = tk.Frame(settings_window, bg=self.colors["background"], padx=30, pady=30)
+        settings_container.pack(expand=True, fill=tk.BOTH)
+    
+        # Auto Delete Files Section
+        files_section_frame = tk.Frame(settings_container, bg=self.colors["background"])
+        files_section_frame.pack(fill=tk.X, pady=10)
+    
+        # Section header
+        files_header = tk.Label(
+            files_section_frame, 
+            text="Auto Delete Files", 
+            font=self.fonts["header"], 
+            fg=self.colors["text_primary"], 
+            bg=self.colors["background"]
+        )
+        files_header.pack(anchor='w', pady=(0, 10))
+    
+        # Auto Delete Files Toggle
+        files_toggle_frame = tk.Frame(files_section_frame, bg=self.colors["background"])
+        files_toggle_frame.pack(fill=tk.X)
+    
+        files_toggle_label = tk.Label(
+            files_toggle_frame, 
+            text="Enable Auto Delete", 
+            font=self.fonts["body"], 
+            fg=self.colors["text_primary"], 
+            bg=self.colors["background"]
+        )
+        files_toggle_label.pack(side=tk.LEFT)
+    
+        # Custom toggle switch for files
+        self.files_toggle_switch = self.create_toggle_switch(
+            files_toggle_frame, 
+            initial_state=self.configurations.get('auto_delete', False)
+        )
+        self.files_toggle_switch.pack(side=tk.RIGHT)
+    
+        # Delete Length Entry for Files
+        files_length_frame = tk.Frame(settings_container, bg=self.colors["background"])
+        files_length_frame.pack(fill=tk.X, pady=10)
+    
+        files_length_label = tk.Label(
+            files_length_frame, 
+            text="Delete Files Shorter Than (minutes):", 
+            font=self.fonts["body"], 
+            fg=self.colors["text_primary"], 
+            bg=self.colors["background"]
+        )
+        files_length_label.pack(side=tk.LEFT)
+    
+        self.files_length_entry = tk.Entry(
+            files_length_frame, 
+            width=5,
+            font=self.fonts["mono"],
+            bg=self.colors["surface"],
+            fg=self.colors["text_primary"],
+            insertbackground=self.colors["primary"],
+            relief=tk.FLAT
+        )
+        self.files_length_entry.insert(0, str(self.configurations.get('delete_length_minutes', 5)))
+        self.files_length_entry.pack(side=tk.RIGHT)
+    
+        # Auto Delete Folders Section
+        folders_section_frame = tk.Frame(settings_container, bg=self.colors["background"])
+        folders_section_frame.pack(fill=tk.X, pady=10)
+    
+        # Section header
+        folders_header = tk.Label(
+            folders_section_frame, 
+            text="Auto Delete Folders", 
+            font=self.fonts["header"], 
+            fg=self.colors["text_primary"], 
+            bg=self.colors["background"]
+        )
+        folders_header.pack(anchor='w', pady=(0, 10))
+    
+        # Auto Delete Folders Toggle
+        folders_toggle_frame = tk.Frame(folders_section_frame, bg=self.colors["background"])
+        folders_toggle_frame.pack(fill=tk.X)
+    
+        folders_toggle_label = tk.Label(
+            folders_toggle_frame, 
+            text="Enable Auto Delete", 
+            font=self.fonts["body"], 
+            fg=self.colors["text_primary"], 
+            bg=self.colors["background"]
+        )
+        folders_toggle_label.pack(side=tk.LEFT)
+    
+        # Custom toggle switch for folders
+        self.folders_toggle_switch = self.create_toggle_switch(
+            folders_toggle_frame, 
+            initial_state=self.configurations.get('auto_delete_folders', False)
+        )
+        self.folders_toggle_switch.pack(side=tk.RIGHT)
+    
+        # Delete Length Entry for Folders
+        folders_length_frame = tk.Frame(settings_container, bg=self.colors["background"])
+        folders_length_frame.pack(fill=tk.X, pady=10)
+    
+        folders_length_label = tk.Label(
+            folders_length_frame, 
+            text="Delete Folders Older Than (days):", 
+            font=self.fonts["body"], 
+            fg=self.colors["text_primary"], 
+            bg=self.colors["background"]
+        )
+        folders_length_label.pack(side=tk.LEFT)
+    
+        self.folders_length_entry = tk.Entry(
+            folders_length_frame, 
+            width=5,
+            font=self.fonts["mono"],
+            bg=self.colors["surface"],
+            fg=self.colors["text_primary"],
+            insertbackground=self.colors["primary"],
+            relief=tk.FLAT
+        )
+        self.folders_length_entry.insert(0, str(self.configurations.get('delete_length_days', 14)))
+        self.folders_length_entry.pack(side=tk.RIGHT)
+    
+        # Save Button
+        save_button = tk.Button(
+            settings_container, 
+            text="Save Settings", 
+            command=lambda: self.save_settings(settings_window),
+            font=self.fonts["header"],
+            bg=self.colors["primary"], 
+            fg=self.colors["background"], 
+            activebackground=self.colors["secondary"],
+            relief=tk.FLAT,
+            padx=20,
+            pady=10
+        )
+        save_button.pack(pady=20)
+    
+        # Restore window when it's minimized
+        settings_window.bind("<Map>", lambda e: settings_window.deiconify())
+    
+        return settings_window
+
+    def create_toggle_switch(self, parent, initial_state=False):
+        """
+        Create a custom toggle switch with app-consistent styling and color indicators.
+        """
+        # Toggle switch container
+        toggle_container = tk.Frame(parent, bg=self.colors["background"])
+    
+        # Visual toggle switch
+        toggle_switch = tk.Frame(
+            toggle_container, 
+            width=50, 
+            height=20, 
+            bg=self.colors["surface"]
+        )
+        toggle_switch.pack()
+        toggle_switch.pack_propagate(False)
+    
+        # Toggle switch handle
+        toggle_handle = tk.Frame(
+            toggle_container, 
+            width=20, 
+            height=20, 
+            bg=self.colors["text_secondary"]
+        )
+        
+        # Initial state positioning and coloring
+        initial_x = 30 if initial_state else 0
+        toggle_handle.place(x=initial_x, y=0)
+        
+        # Background color based on initial state
+        toggle_switch.configure(
+            bg=self.colors["secondary"] if initial_state else self.colors["surface"]
+        )
+    
+        # Toggle state tracking
+        toggle_state = [initial_state]
+    
+        def toggle(event):
+            """
+            Toggle the switch state and animate the handle with color change.
+            """
+            toggle_state[0] = not toggle_state[0]
+            new_x = 30 if toggle_state[0] else 0
+            
+            # Animate handle movement
+            toggle_handle.place(x=new_x, y=0)
+            
+            # Change background color based on state
+            toggle_switch.configure(
+                bg=self.colors["secondary"] if toggle_state[0] else self.colors["surface"]
+            )
+    
+        # Bind click events
+        toggle_switch.bind("<Button-1>", toggle)
+        toggle_handle.bind("<Button-1>", toggle)
+    
+        # Store state retrieval method
+        toggle_container.get_state = lambda: toggle_state[0]
+    
+        return toggle_container
+
+    def save_settings(self, settings_window=None):
+        """
+        Save the settings from the settings menu.
+        """
+        try:
+            # Update auto delete file settings
+            self.configurations['auto_delete'] = self.files_toggle_switch.get_state()
+            
+            # Validate and update delete length for files
+            delete_length = int(self.files_length_entry.get())
+            if delete_length > 0:
+                self.configurations['delete_length_minutes'] = delete_length
+
+            # Update auto delete folders settings
+            self.configurations['auto_delete_folders'] = self.folders_toggle_switch.get_state()
+
+            # Validate and update delete days for folders
+            delete_days = int(self.folders_length_entry.get())
+            if delete_days > 0:
+                self.configurations['delete_length_days'] = delete_days
+
+            # Save to config file
+            self.save_configurations()
+
+            # Restart auto-delete threads
+            self.start_auto_delete_thread()
+            self.start_old_folder_delete_thread()
+
+            # Close settings window if provided
+            if settings_window:
+                settings_window.destroy()
+
+            messagebox.showinfo("Settings", "Settings saved successfully!")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid input. Please check your settings.")
 
 
 if __name__ == "__main__":
