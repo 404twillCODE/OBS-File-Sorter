@@ -105,6 +105,7 @@ class OBSAutoSorterApp:
             "backtrack_folder": "",
             "replay_folder": "",
             "recording_folder": "",
+            "vault_destination_folder": "",
             "auto_delete": False,
             "delete_length_minutes": 5,
             "auto_delete_folders": False,
@@ -131,6 +132,9 @@ class OBSAutoSorterApp:
 
         # Start old folder delete thread if enabled
         self.start_old_folder_delete_thread()
+        
+        # Start vault monitoring thread
+        self.start_vault_monitor_thread()
 
         # Bind window close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -229,7 +233,8 @@ class OBSAutoSorterApp:
             ("Source Folder", self.browse_source_folder, "source_folder"),
             ("Backtrack Folder", self.browse_backtrack_folder, "backtrack_folder"),
             ("Replay Folder", self.browse_replay_folder, "replay_folder"),
-            ("Recording Folder", self.browse_recording_folder, "recording_folder")
+            ("Recording Folder", self.browse_recording_folder, "recording_folder"),
+            ("Vault Destination Folder", self.browse_vault_destination_folder, "vault_destination_folder")
         ]
 
         for label_text, browse_command, config_key in folders:
@@ -383,6 +388,14 @@ class OBSAutoSorterApp:
             self.configurations["recording_folder"] = folder
             self.save_configurations()
 
+    def browse_vault_destination_folder(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            self.vault_destination_folder_entry.delete(0, tk.END)
+            self.vault_destination_folder_entry.insert(0, folder)
+            self.configurations["vault_destination_folder"] = folder
+            self.save_configurations()
+
     def save_configurations(self):
         """Save configurations to a JSON file."""
         try:
@@ -403,6 +416,7 @@ class OBSAutoSorterApp:
             "backtrack_folder": "",
             "replay_folder": "",
             "recording_folder": "",
+            "vault_destination_folder": "",
             "auto_delete": False,
             "delete_length_minutes": 5,  # Default to 5 minutes
             "auto_delete_folders": False,  # New configuration for folder deletion
@@ -444,6 +458,74 @@ class OBSAutoSorterApp:
             print(f"Error reading configuration file: {e}")
             self.configurations = default_configurations
             self.save_configurations()
+
+    def create_vault_folders(self, target_folder):
+        """Create The Vault folder and its subfolders in the target directory."""
+        vault_folder = os.path.join(target_folder, "The Vault")
+        
+        # Create main vault folder
+        try:
+            os.makedirs(vault_folder, exist_ok=True)
+            logger.debug(f"Created/verified vault folder: {vault_folder}")
+            
+            # Create subfolders
+            subfolders = ["Fortnite", "R.E.P.O", "Random"]
+            for subfolder in subfolders:
+                subfolder_path = os.path.join(vault_folder, subfolder)
+                os.makedirs(subfolder_path, exist_ok=True)
+                logger.debug(f"Created/verified vault subfolder: {subfolder_path}")
+                
+            return True
+        except Exception as e:
+            logger.error(f"Error creating vault folders: {e}", exc_info=True)
+            return False
+
+    def sync_vault_files(self, target_date_folder):
+        """Sync files from The Vault folders to the vault destination folder."""
+        vault_destination = self.configurations.get("vault_destination_folder", "")
+        if not vault_destination or not os.path.exists(vault_destination):
+            logger.warning(f"Vault destination folder not set or doesn't exist: {vault_destination}")
+            return
+        
+        vault_folder = os.path.join(target_date_folder, "The Vault")
+        if not os.path.exists(vault_folder):
+            logger.warning(f"Vault folder doesn't exist: {vault_folder}")
+            return
+            
+        # Ensure destination vault folders exist
+        dest_vault_folders = {
+            "Fortnite": os.path.join(vault_destination, "Fortnite"),
+            "R.E.P.O": os.path.join(vault_destination, "R.E.P.O"),
+            "Random": os.path.join(vault_destination, "Random")
+        }
+        
+        for folder_name, folder_path in dest_vault_folders.items():
+            os.makedirs(folder_path, exist_ok=True)
+            
+        # Check for files in each vault subfolder and sync them
+        subfolders = ["Fortnite", "R.E.P.O", "Random"]
+        for subfolder in subfolders:
+            source_folder = os.path.join(vault_folder, subfolder)
+            dest_folder = dest_vault_folders[subfolder]
+            
+            if not os.path.exists(source_folder):
+                continue
+                
+            # Copy all files from source to destination
+            for filename in os.listdir(source_folder):
+                if not filename.lower().endswith('.mp4'):
+                    continue
+                    
+                source_file = os.path.join(source_folder, filename)
+                dest_file = os.path.join(dest_folder, filename)
+                
+                try:
+                    # Only copy if file doesn't already exist in destination
+                    if not os.path.exists(dest_file):
+                        shutil.copy2(source_file, dest_file)
+                        logger.info(f"Synced vault file: {source_file} -> {dest_file}")
+                except Exception as e:
+                    logger.error(f"Error syncing vault file {filename}: {e}", exc_info=True)
 
     def run_sorter(self):
         logger.info("Starting sorting process...")
@@ -504,6 +586,9 @@ class OBSAutoSorterApp:
         # Variable to track if we processed any files successfully
         files_processed = 0
         files_skipped = 0
+        
+        # Track created date folders for vault folder creation
+        created_date_folders = []
 
         for filename in mp4_files:
             file_path = os.path.join(source_folder, filename)
@@ -543,6 +628,10 @@ class OBSAutoSorterApp:
 
                 logger.debug(f"Target folder: {target_folder}")
                 os.makedirs(target_folder, exist_ok=True)
+                
+                # Track created folders for vault creation
+                if target_folder not in created_date_folders:
+                    created_date_folders.append(target_folder)
 
                 # Handle auto-delete
                 if auto_delete and video_length <= delete_length_seconds:
@@ -567,6 +656,13 @@ class OBSAutoSorterApp:
                 logger.error(f"Error processing file {filename}: {e}", exc_info=True)
                 files_skipped += 1
                 print(f"Error processing file {filename}: {e}")
+        
+        # Create The Vault folders in all date folders that were created
+        logger.info("Creating Vault folders in all processed date folders")
+        for date_folder in created_date_folders:
+            self.create_vault_folders(date_folder)
+            # Sync any existing files in vault folders
+            self.sync_vault_files(date_folder)
 
         logger.info(f"Sorting process completed. Processed: {files_processed}, Skipped/Deleted: {files_skipped}")
         self.status_label.config(text=f"Complete: {files_processed} files sorted, {files_skipped} skipped/deleted")
@@ -1062,6 +1158,60 @@ class OBSAutoSorterApp:
             messagebox.showinfo("Settings", "Settings saved successfully!")
         except ValueError:
             messagebox.showerror("Error", "Invalid input. Please check your settings.")
+
+    def start_vault_monitor_thread(self):
+        """Start a thread to monitor vault folders for new files"""
+        self.vault_monitor_thread = threading.Thread(target=self.monitor_vault_folders, daemon=True)
+        self.vault_monitor_thread.start()
+        logger.info("Started vault monitoring thread")
+        
+    def monitor_vault_folders(self):
+        """Continuously monitor for new files in vault folders"""
+        logger.info("Vault folder monitoring started")
+        
+        while True:
+            try:
+                # Get base folders
+                backtrack_folder = self.configurations.get("backtrack_folder", "")
+                replay_folder = self.configurations.get("replay_folder", "")
+                recording_folder = self.configurations.get("recording_folder", "")
+                vault_destination = self.configurations.get("vault_destination_folder", "")
+                
+                # Skip if any essential folder is not configured
+                if not all([backtrack_folder, replay_folder, recording_folder, vault_destination]):
+                    time.sleep(60)
+                    continue
+                    
+                # Check if destination exists
+                if not os.path.exists(vault_destination):
+                    time.sleep(60)
+                    continue
+                
+                # Scan all date folders in each base folder
+                for base_folder in [backtrack_folder, replay_folder, recording_folder]:
+                    if not os.path.exists(base_folder):
+                        continue
+                        
+                    # Look for date folders
+                    for date_folder_name in os.listdir(base_folder):
+                        date_folder_path = os.path.join(base_folder, date_folder_name)
+                        
+                        # Skip if not a directory or not a date folder
+                        if not os.path.isdir(date_folder_path):
+                            continue
+                            
+                        # Check for vault folder
+                        vault_folder = os.path.join(date_folder_path, "The Vault")
+                        if os.path.exists(vault_folder):
+                            # Sync any files in the vault folder
+                            self.sync_vault_files(date_folder_path)
+                
+                # Sleep to avoid high CPU usage
+                time.sleep(60)  # Check every minute
+                
+            except Exception as e:
+                logger.error(f"Error in vault monitoring: {e}", exc_info=True)
+                time.sleep(60)  # Wait before retrying
 
 
 if __name__ == "__main__":
