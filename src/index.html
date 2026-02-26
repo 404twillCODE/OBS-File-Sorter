@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com;" />
+  <title>OBS File Sorter</title>
+  <link rel="icon" href="./icon.ico" type="image/x-icon" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="app-titlebar" id="titlebar">
+    <span class="app-title">OBS File Sorter</span>
+    <div class="titlebar-actions">
+      <button type="button" class="titlebar-btn" id="btnMinimize" aria-label="Minimize">−</button>
+      <button type="button" class="titlebar-btn titlebar-close" id="btnClose" aria-label="Close">×</button>
+    </div>
+  </header>
+  <div id="app">
+    <main class="main">
+      <section class="section">
+        <div class="folder-rows" id="folderRows"></div>
+      </section>
+      <section class="section section-actions">
+        <button type="button" class="btn btn-primary" id="sortBtn">Sort Clips</button>
+        <button type="button" class="btn btn-secondary" id="settingsBtn">Settings</button>
+        <p class="status" id="status"></p>
+      </section>
+      <details class="setup-block">
+        <summary class="setup-summary">What do these folders mean?</summary>
+        <div class="setup-content">
+          <p><strong>Source folder</strong> — Your main OBS folder where recordings and clips are stored. This is where the program looks for files to sort.</p>
+          <p><strong>Backtrack folder</strong> — For clips from the Aitum Vertical Discord plugin. Sorted files that contain "backtrack" in the name go here.</p>
+          <p><strong>Replay folder</strong> — Clips you get from using OBS to clip (replay buffer). Files with "replay" in the name go here.</p>
+          <p><strong>Recording folder</strong> — Your main recordings. Everything else (that isn’t backtrack or replay) goes here, organized by date.</p>
+          <p><strong>Vault destination</strong> — A place to save/copy files. The program creates "The Vault" subfolders (e.g. Fortnite, R.E.P.O, Random) in your date folders and syncs them to this destination.</p>
+          <p class="setup-note">By default the program only moves or copies files. In Settings you can optionally enable auto-deletion of short clips or old folders.</p>
+        </div>
+      </details>
+    </main>
+    <div id="toast" class="toast" aria-live="polite"></div>
+  </div>
+  <div id="settingsOverlay" class="overlay hidden">
+    <div class="settings-dialog">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button type="button" class="btn-close" id="settingsClose" aria-label="Close">×</button>
+      </div>
+      <div class="settings-body">
+        <fieldset class="setting-group">
+          <legend>Auto delete short files</legend>
+          <label class="toggle-row">
+            <span>Enable</span>
+            <input type="checkbox" id="autoDelete" />
+            <span class="toggle"></span>
+          </label>
+          <label class="number-row">
+            <span>Delete files shorter than (minutes)</span>
+            <input type="number" id="deleteLengthMinutes" min="1" max="120" value="5" />
+          </label>
+        </fieldset>
+        <fieldset class="setting-group">
+          <legend>Auto delete old folders</legend>
+          <label class="toggle-row">
+            <span>Enable</span>
+            <input type="checkbox" id="autoDeleteFolders" />
+            <span class="toggle"></span>
+          </label>
+          <label class="number-row">
+            <span>Delete folders older than (days)</span>
+            <input type="number" id="deleteLengthDays" min="1" max="365" value="14" />
+          </label>
+        </fieldset>
+        <fieldset class="setting-group">
+          <legend>Startup</legend>
+          <label class="toggle-row">
+            <span>Run OBS File Sorter when Windows starts</span>
+            <input type="checkbox" id="runOnStartup" />
+            <span class="toggle"></span>
+          </label>
+        </fieldset>
+      </div>
+    </div>
+  </div>
+  <script src="./renderer.js"></script>
+</body>
+</html>
