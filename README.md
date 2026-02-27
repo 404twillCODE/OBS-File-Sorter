@@ -6,9 +6,7 @@ Electron app to sort OBS recordings (backtrack, replay, regular) into date-based
 
 - **Sorting clips (move/copy by date, vault sync)** — **Nothing extra.** The app uses normal file operations; no other software is required.
 
-- **“Auto delete short files” (Settings)** — **FFmpeg.** The app uses `ffprobe` (part of [FFmpeg](https://ffmpeg.org/download.html)) to read video duration. If FFmpeg is not installed or not on your system PATH, the app still runs and sorts clips, but it will **not** auto-delete short clips (it keeps them all). To use auto-delete:
-  1. Download FFmpeg for Windows from https://ffmpeg.org/download.html (e.g. the “essentials” build).
-  2. Install it and add the `bin` folder (where `ffprobe.exe` lives) to your system PATH.
+- **“Auto delete short files” (Settings)** — The **installer includes ffprobe** (from [FFmpeg](https://ffmpeg.org/download.html)), so you don’t need to install FFmpeg separately. The app uses it to read video duration and delete clips shorter than your chosen threshold. If you run from source (`npm run start`) without the packaged app, the app will use a bundled ffprobe from the build; you can still add FFmpeg to your PATH if you prefer.
 
 No other downloads (Node, Python, etc.) are needed to run the built app.
 
@@ -29,7 +27,11 @@ npm run start
 - **`npm run dev`** — Builds the app and launches Electron (use during development).
 - **`npm run build`** — Compiles TypeScript (main, preload, renderer) and copies HTML/CSS into `dist/`.
 - **`npm run start`** — Runs the app (run after `npm run build`).
-- **`npm run dist`** — Builds the app and creates a **Windows installer** in the `release/` folder. The installer is self-contained: end users do not need to install Node, npm, or anything else; they just run the installer and get the app. (Only the optional “Auto delete short files” feature needs FFmpeg on the target PC if they want to use it.)
+- **`npm run dist`** — Builds the app and creates a **Windows installer** in the `release/` folder. The installer is self-contained and includes ffprobe, so end users do not need to install Node, npm, or FFmpeg; they just run the installer and get the app (including “Auto delete short files”).
+
+## Website
+
+A landing page lives in **`/website`** (Next.js, Tailwind, same look as FocusedOnTom). It’s deployed to **GitHub Pages** via GitHub Actions when you push changes under `website/` or the workflow file. Enable Pages in the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site will be at **https://404twillcode.github.io/OBS-File-Sorter/** and includes a **Download for Windows** link to the [latest release](https://github.com/404twillCODE/OBS-File-Sorter/releases/latest).
 
 ## Where is the old code?
 

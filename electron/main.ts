@@ -5,6 +5,19 @@ import * as os from "os";
 import { spawn } from "child_process";
 import chokidar from "chokidar";
 
+/** Path to bundled ffprobe (from @ffprobe-installer/ffprobe), or "ffprobe" to use system PATH. */
+function getFfprobePath(): string {
+  try {
+    let p = (require("@ffprobe-installer/ffprobe") as { path: string }).path;
+    if (app.isPackaged && p.includes("app.asar")) {
+      p = p.replace(/app\.asar/, "app.asar.unpacked");
+    }
+    return p;
+  } catch {
+    return "ffprobe";
+  }
+}
+
 const CONFIG_NAME = "appConfig.json";
 
 function getConfigPath(): string {
@@ -83,7 +96,8 @@ function getNextClipName(destinationDir: string, padding: number = 3): string {
 
 function getVideoLengthSeconds(filePath: string): Promise<number> {
   return new Promise((resolve) => {
-    const proc = spawn("ffprobe", [
+    const ffprobe = getFfprobePath();
+    const proc = spawn(ffprobe, [
       "-v", "error",
       "-show_entries", "format=duration",
       "-of", "default=noprint_wrappers=1:nokey=1",
