@@ -6,4 +6,4 @@ Landing page for [OBS File Sorter](https://github.com/404twillCODE/OBS-File-Sort
 - **Build:** `npm run build` → static files in `out/`.
 - **Deploy:** GitHub Actions builds and deploys to [GitHub Pages](https://404twillcode.github.io/OBS-File-Sorter/) on push to `main` when `website/` or this workflow changes.
 
-Download link on the site points to the repo’s [latest release](https://github.com/404twillCODE/OBS-File-Sorter/releases/latest).
+Download link on the site points to the repo’s [Windows installer](https://github.com/404twillCODE/OBS-File-Sorter/releases/download/Download/OBS.File.Sorter.Setup.1.0.0.exe).

@@ -31,7 +31,7 @@ npm run start
 
 ## Website
 
-A landing page lives in **`/website`** (Next.js, Tailwind, same look as FocusedOnTom). It’s deployed to **GitHub Pages** via GitHub Actions when you push changes under `website/` or the workflow file. Enable Pages in the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site will be at **https://404twillcode.github.io/OBS-File-Sorter/** and includes a **Download for Windows** link to the [latest release](https://github.com/404twillCODE/OBS-File-Sorter/releases/latest).
+A landing page lives in **`/website`** (Next.js, Tailwind, same look as FocusedOnTom). It’s deployed to **GitHub Pages** via GitHub Actions when you push changes under `website/` or the workflow file. Enable Pages in the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site will be at **https://404twillcode.github.io/OBS-File-Sorter/** and includes a **Download for Windows** link to the [installer](https://github.com/404twillCODE/OBS-File-Sorter/releases/download/Download/OBS.File.Sorter.Setup.1.0.0.exe).
 
 ## Where is the old code?
 

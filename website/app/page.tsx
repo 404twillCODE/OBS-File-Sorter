@@ -3,8 +3,8 @@
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
 
-const GITHUB_RELEASES_URL =
-  "https://github.com/404twillCODE/OBS-File-Sorter/releases/latest";
+const DOWNLOAD_URL =
+  "https://github.com/404twillCODE/OBS-File-Sorter/releases/download/Download/OBS.File.Sorter.Setup.1.0.0.exe";
 const GITHUB_REPO_URL = "https://github.com/404twillCODE/OBS-File-Sorter";
 
 const fadeInUp = {
@@ -26,7 +26,7 @@ function Nav() {
           OBS File Sorter
         </span>
         <a
-          href={GITHUB_RELEASES_URL}
+          href={DOWNLOAD_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="rounded-lg border border-[var(--ice)]/40 bg-[var(--ice)]/10 px-4 py-2 text-sm font-medium text-[var(--ice)] transition-colors hover:bg-[var(--ice)]/20"
@@ -175,7 +175,7 @@ export default function HomePage() {
             </motion.p>
             <motion.div variants={fadeInUp} transition={transition} className="mt-10">
               <a
-                href={GITHUB_RELEASES_URL}
+                href={DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--ice)]/40 bg-[var(--ice)] px-6 py-3.5 text-base font-semibold text-[var(--bg)] transition-all hover:bg-[var(--ice)]/90 hover:shadow-[0_0_24px_rgba(125,211,252,0.3)]"
@@ -296,7 +296,7 @@ export default function HomePage() {
                   Download the installer from GitHub. No account required.
                 </p>
                 <a
-                  href={GITHUB_RELEASES_URL}
+                  href={DOWNLOAD_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[var(--ice)]/40 bg-[var(--ice)] px-6 py-3.5 text-base font-semibold text-[var(--bg)] transition-all hover:bg-[var(--ice)]/90 hover:shadow-[0_0_24px_rgba(125,211,252,0.3)]"
@@ -338,7 +338,7 @@ export default function HomePage() {
                 Source on GitHub
               </a>
               <a
-                href={GITHUB_RELEASES_URL}
+                href={DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-[var(--ice)] hover:underline"
