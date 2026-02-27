@@ -118,28 +118,45 @@ function getVideoLengthSeconds(filePath: string): Promise<number> {
   });
 }
 
-function createVaultFolders(targetFolder: string): void {
-  const vaultFolder = path.join(targetFolder, "The Vault");
+function getVaultFolderName(vaultDestination?: string): string {
+  if (!vaultDestination) return "The Vault";
+  const base = path.basename(vaultDestination);
+  return base || "The Vault";
+}
+
+function getVaultSubfolders(vaultDestination?: string): string[] {
+  if (!vaultDestination || !fs.existsSync(vaultDestination)) return [];
+  try {
+    return fs
+      .readdirSync(vaultDestination, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function createVaultFolders(targetFolder: string, vaultDestination?: string): void {
+  const vaultFolderName = getVaultFolderName(vaultDestination);
+  const vaultFolder = path.join(targetFolder, vaultFolderName);
   fs.mkdirSync(vaultFolder, { recursive: true });
-  for (const sub of ["Fortnite", "R.E.P.O", "Random"]) {
+  const subfolders = getVaultSubfolders(vaultDestination);
+  for (const sub of subfolders) {
     fs.mkdirSync(path.join(vaultFolder, sub), { recursive: true });
   }
 }
 
 function syncVaultFiles(targetDateFolder: string, vaultDestination: string): void {
-  const vaultFolder = path.join(targetDateFolder, "The Vault");
-  if (!vaultDestination || !fs.existsSync(vaultDestination) || !fs.existsSync(vaultFolder)) return;
-  const destVaultFolders: Record<string, string> = {
-    Fortnite: path.join(vaultDestination, "Fortnite"),
-    "R.E.P.O": path.join(vaultDestination, "R.E.P.O"),
-    Random: path.join(vaultDestination, "Random"),
-  };
-  for (const folderPath of Object.values(destVaultFolders)) {
-    fs.mkdirSync(folderPath, { recursive: true });
-  }
-  for (const sub of ["Fortnite", "R.E.P.O", "Random"]) {
+  if (!vaultDestination || !fs.existsSync(vaultDestination)) return;
+  const vaultFolderName = getVaultFolderName(vaultDestination);
+  const vaultFolder = path.join(targetDateFolder, vaultFolderName);
+  if (!fs.existsSync(vaultFolder)) return;
+  const subfolders = getVaultSubfolders(vaultDestination);
+  for (const sub of subfolders) {
     const srcDir = path.join(vaultFolder, sub);
-    const destDir = destVaultFolders[sub];
+    const destDir = path.join(vaultDestination, sub);
+    fs.mkdirSync(destDir, { recursive: true });
     if (!fs.existsSync(srcDir)) continue;
     for (const name of fs.readdirSync(srcDir)) {
       if (!name.toLowerCase().endsWith(".mp4")) continue;
@@ -306,8 +323,17 @@ ipcMain.handle("listVaultFolders", (): string[] => {
 ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; processed?: number; skipped?: number }> => {
   const config = loadConfig();
   const { source_folder, backtrack_folder, replay_folder, recording_folder, vault_destination_folder, auto_delete, delete_length_minutes } = config;
-  if (!source_folder || !backtrack_folder || !replay_folder || !recording_folder) {
-    return { ok: false, message: "Please set all required folders." };
+  if (!source_folder) {
+    return { ok: false, message: "Please set a source folder." };
+  }
+  const hasBacktrack = !!backtrack_folder;
+  const hasReplay = !!replay_folder;
+  const hasRecording = !!recording_folder;
+  if (!hasBacktrack && !hasReplay && !hasRecording) {
+    return {
+      ok: false,
+      message: "Please set at least one destination folder (backtrack, replay, or recording).",
+    };
   }
   if (!fs.existsSync(source_folder)) {
     return { ok: false, message: "Source folder does not exist." };
@@ -342,10 +368,19 @@ ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; pr
     const dateFolder = dateFmt(mtime);
     const isBacktrack = filename.toLowerCase().includes("backtrack");
     const isReplay = filename.toLowerCase().includes("replay");
-    let targetFolder: string;
-    if (isBacktrack) targetFolder = path.join(backtrack_folder, dateFolder);
-    else if (isReplay) targetFolder = path.join(replay_folder, dateFolder);
-    else targetFolder = path.join(recording_folder, dateFolder);
+    let targetRoot: string | null = null;
+    if (isBacktrack) {
+      if (backtrack_folder) targetRoot = backtrack_folder;
+    } else if (isReplay) {
+      if (replay_folder) targetRoot = replay_folder;
+    } else {
+      if (recording_folder) targetRoot = recording_folder;
+    }
+    if (!targetRoot) {
+      skipped++;
+      continue;
+    }
+    const targetFolder = path.join(targetRoot, dateFolder);
     fs.mkdirSync(targetFolder, { recursive: true });
     if (!createdDateFolders.includes(targetFolder)) createdDateFolders.push(targetFolder);
     if (auto_delete && !isBacktrack && !isReplay) {
@@ -374,7 +409,7 @@ ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; pr
     }
   }
   for (const dateFolder of createdDateFolders) {
-    createVaultFolders(dateFolder);
+    createVaultFolders(dateFolder, vault_destination_folder);
     if (vault_destination_folder) syncVaultFiles(dateFolder, vault_destination_folder);
   }
   return {
