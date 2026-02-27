@@ -15,11 +15,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "OBS File Sorter",
   description:
-    "Sort OBS recordings and clips into date-based folders. Backtrack, replay, and vault sync for Windows.",
+    "Sort OBS recordings and clips into date-based folders. Discord game detection, backtrack, replay, and vault sync. Windows now; Mac and Linux coming soon.",
   openGraph: {
     title: "OBS File Sorter",
     description:
-      "Sort OBS recordings and clips into date-based folders. Backtrack, replay, and vault sync for Windows.",
+      "Sort OBS recordings and clips into date-based folders. Discord game detection, backtrack, replay, and vault sync. Windows now; Mac and Linux coming soon.",
   },
 };
 

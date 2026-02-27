@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { spawn } from "child_process";
 import chokidar from "chokidar";
+import * as discord from "./discord";
 
 /** Path to bundled ffprobe (from @ffprobe-installer/ffprobe), or "ffprobe" to use system PATH. */
 function getFfprobePath(): string {
@@ -19,10 +20,30 @@ function getFfprobePath(): string {
 }
 
 const CONFIG_NAME = "appConfig.json";
+const MAX_GAME_FOLDER_LENGTH = 64;
+const WINDOWS_RESERVED = new Set([
+  "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+]);
 
 function getConfigPath(): string {
   return path.join(app.getPath("userData"), CONFIG_NAME);
 }
+
+/** Windows-safe folder name: trim, replace illegal chars, collapse spaces/underscores, limit length, guard reserved names. */
+export function sanitizeGameFolderName(name: string): string {
+  let s = String(name).trim();
+  s = s.replace(/[<>:"/\\|?*]/g, "_");
+  s = s.replace(/_+/g, "_").replace(/\s+/g, " ").replace(/ +/g, "_").replace(/_+/g, "_");
+  s = s.replace(/^_|_$/g, "");
+  if (s.length > MAX_GAME_FOLDER_LENGTH) s = s.slice(0, MAX_GAME_FOLDER_LENGTH).replace(/_$/, "");
+  if (!s) s = "Unknown";
+  const upper = s.toUpperCase();
+  if (WINDOWS_RESERVED.has(upper)) s = s + "_";
+  return s || "Unknown";
+}
+
+export type DiscordDetectionMode = "auto" | "manualOverride";
 
 export interface AppConfig {
   source_folder: string;
@@ -35,6 +56,12 @@ export interface AppConfig {
   auto_delete_folders: boolean;
   delete_length_days: number;
   runOnStartup: boolean;
+  discordGameDetectionEnabled: boolean;
+  unknownGameFolderName: string;
+  sanitizeGameNames: boolean;
+  discordDetectionMode: DiscordDetectionMode;
+  manualGameName: string;
+  recentGames: string[];
 }
 
 const defaultConfig: AppConfig = {
@@ -48,6 +75,12 @@ const defaultConfig: AppConfig = {
   auto_delete_folders: false,
   delete_length_days: 14,
   runOnStartup: false,
+  discordGameDetectionEnabled: true,
+  unknownGameFolderName: "Unknown",
+  sanitizeGameNames: true,
+  discordDetectionMode: "auto",
+  manualGameName: "",
+  recentGames: [],
 };
 
 function loadConfig(): AppConfig {
@@ -56,10 +89,39 @@ function loadConfig(): AppConfig {
     if (fs.existsSync(p)) {
       const raw = fs.readFileSync(p, "utf-8");
       const data = JSON.parse(raw) as Partial<AppConfig>;
-      return { ...defaultConfig, ...data };
+      const merged = { ...defaultConfig, ...data };
+      if (!Array.isArray(merged.recentGames)) merged.recentGames = [];
+      if (merged.recentGames.length > 25) merged.recentGames = merged.recentGames.slice(0, 25);
+      return merged;
     }
   } catch (_) {}
   return { ...defaultConfig };
+}
+
+const RECENT_GAMES_MAX = 25;
+
+function pushRecentGame(config: AppConfig, gameName: string): void {
+  if (!gameName || gameName === config.unknownGameFolderName) return;
+  const list = [...(config.recentGames || [])];
+  const idx = list.indexOf(gameName);
+  if (idx >= 0) list.splice(idx, 1);
+  list.unshift(gameName);
+  if (list.length > RECENT_GAMES_MAX) list.length = RECENT_GAMES_MAX;
+  config.recentGames = list;
+  saveConfig(config);
+}
+
+/** Resolve the game subfolder name for Clips/Backtrack routing (only used when detection is on). */
+function getEffectiveGameFolderName(cfg: AppConfig): string {
+  let raw: string;
+  if (cfg.discordDetectionMode === "manualOverride" && cfg.manualGameName.trim()) {
+    raw = cfg.manualGameName.trim();
+  } else {
+    const status = discord.getStatus();
+    raw = status.game ?? cfg.unknownGameFolderName;
+  }
+  if (!raw) raw = cfg.unknownGameFolderName;
+  return cfg.sanitizeGameNames ? sanitizeGameFolderName(raw) : raw.replace(/[<>:"/\\|?*]/g, "_").trim() || "Unknown";
 }
 
 function saveConfig(config: AppConfig): void {
@@ -205,7 +267,10 @@ function createWindow() {
     backgroundColor: "#040a12",
     show: false,
   });
+  let unsubDiscord: (() => void) | null = null;
   mainWindow.on("closed", () => {
+    if (unsubDiscord) unsubDiscord();
+    unsubDiscord = null;
     mainWindow = null;
     if (vaultWatcher) {
       vaultWatcher.close();
@@ -213,7 +278,14 @@ function createWindow() {
     }
   });
   mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+    unsubDiscord = discord.onStatusChange((status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("discord-game-changed", status);
+      }
+    });
+  });
 }
 
 async function runAutoDeleteShortFiles(): Promise<void> {
@@ -266,9 +338,14 @@ app.whenReady().then(() => {
   if (config.vault_destination_folder) {
     ensureVaultWatcher(config.vault_destination_folder);
   }
+  discord.startPolling();
   createWindow();
   setInterval(() => { runAutoDeleteShortFiles(); }, 60 * 1000);
   setInterval(() => { runAutoDeleteOldFolders(); }, 24 * 60 * 60 * 1000);
+});
+
+app.on("before-quit", () => {
+  discord.stopPolling();
 });
 
 app.on("window-all-closed", () => app.quit());
@@ -320,6 +397,9 @@ ipcMain.handle("listVaultFolders", (): string[] => {
   }
 });
 
+ipcMain.handle("discord-getStatus", (): { connected: boolean; game: string | null } => discord.getStatus());
+ipcMain.handle("discord-refresh", (): void => { discord.refresh(); });
+
 ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; processed?: number; skipped?: number }> => {
   const config = loadConfig();
   const { source_folder, backtrack_folder, replay_folder, recording_folder, vault_destination_folder, auto_delete, delete_length_minutes } = config;
@@ -355,6 +435,8 @@ ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; pr
     const d = new Date(ms);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
+  let usedGameForRecent: string | null = null;
+
   for (const filename of files) {
     const filePath = path.join(source_folder, filename);
     let stat: fs.Stats;
@@ -369,10 +451,17 @@ ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; pr
     const isBacktrack = filename.toLowerCase().includes("backtrack");
     const isReplay = filename.toLowerCase().includes("replay");
     let targetRoot: string | null = null;
+    let useGameSubfolder = false;
     if (isBacktrack) {
-      if (backtrack_folder) targetRoot = backtrack_folder;
+      if (backtrack_folder) {
+        targetRoot = backtrack_folder;
+        useGameSubfolder = config.discordGameDetectionEnabled;
+      }
     } else if (isReplay) {
-      if (replay_folder) targetRoot = replay_folder;
+      if (replay_folder) {
+        targetRoot = replay_folder;
+        useGameSubfolder = config.discordGameDetectionEnabled;
+      }
     } else {
       if (recording_folder) targetRoot = recording_folder;
     }
@@ -380,7 +469,15 @@ ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; pr
       skipped++;
       continue;
     }
+    const currentGame = useGameSubfolder ? getEffectiveGameFolderName(config) : null;
+    if (useGameSubfolder && currentGame) {
+      targetRoot = path.join(targetRoot, currentGame);
+      if (currentGame !== config.unknownGameFolderName) usedGameForRecent = currentGame;
+    }
     const targetFolder = path.join(targetRoot, dateFolder);
+    if (process.env.NODE_ENV !== "production" && (isBacktrack || isReplay)) {
+      console.log("[sortClips] usingGameFolder=" + (currentGame ?? "(none)") + " finalDir=" + targetFolder);
+    }
     fs.mkdirSync(targetFolder, { recursive: true });
     if (!createdDateFolders.includes(targetFolder)) createdDateFolders.push(targetFolder);
     if (auto_delete && !isBacktrack && !isReplay) {
@@ -407,6 +504,9 @@ ipcMain.handle("sortClips", async (): Promise<{ ok: boolean; message: string; pr
         skipped++;
       }
     }
+  }
+  if (processed > 0 && usedGameForRecent) {
+    pushRecentGame(config, usedGameForRecent);
   }
   for (const dateFolder of createdDateFolders) {
     createVaultFolders(dateFolder, vault_destination_folder);

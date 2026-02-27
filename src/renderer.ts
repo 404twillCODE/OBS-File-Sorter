@@ -152,6 +152,13 @@ function bindSettings() {
   const deleteLengthDays = document.getElementById("deleteLengthDays") as HTMLInputElement;
 
   const runOnStartup = document.getElementById("runOnStartup") as HTMLInputElement;
+  const discordGameDetectionEnabled = document.getElementById("discordGameDetectionEnabled") as HTMLInputElement;
+  const unknownGameFolderName = document.getElementById("unknownGameFolderName") as HTMLInputElement;
+  const sanitizeGameNames = document.getElementById("sanitizeGameNames") as HTMLInputElement;
+  const discordDetectionMode = document.getElementById("discordDetectionMode") as HTMLSelectElement;
+  const manualGameName = document.getElementById("manualGameName") as HTMLInputElement;
+  const manualGameRow = document.getElementById("manualGameRow");
+  const recentGamesList = document.getElementById("recentGamesList");
   function openSettings() {
     if (!overlay) return;
     autoDelete.checked = config.auto_delete;
@@ -159,6 +166,20 @@ function bindSettings() {
     autoDeleteFolders.checked = config.auto_delete_folders;
     deleteLengthDays.value = String(config.delete_length_days);
     if (runOnStartup) runOnStartup.checked = config.runOnStartup;
+    if (discordGameDetectionEnabled) discordGameDetectionEnabled.checked = config.discordGameDetectionEnabled !== false;
+    if (unknownGameFolderName) unknownGameFolderName.value = config.unknownGameFolderName ?? "Unknown";
+    if (sanitizeGameNames) sanitizeGameNames.checked = config.sanitizeGameNames !== false;
+    if (discordDetectionMode) discordDetectionMode.value = config.discordDetectionMode ?? "auto";
+    if (manualGameName) manualGameName.value = config.manualGameName ?? "";
+    if (manualGameRow) manualGameRow.style.display = (config.discordDetectionMode === "manualOverride") ? "" : "none";
+    if (recentGamesList && config.recentGames?.length) {
+      recentGamesList.innerHTML = "";
+      for (const g of config.recentGames) {
+        const o = document.createElement("option");
+        o.value = g;
+        recentGamesList.appendChild(o);
+      }
+    }
     overlay.classList.remove("hidden");
   }
 
@@ -196,11 +217,54 @@ function bindSettings() {
     config.runOnStartup = runOnStartup.checked;
     persistConfig({ runOnStartup: config.runOnStartup });
   });
+  discordGameDetectionEnabled?.addEventListener("change", () => {
+    config.discordGameDetectionEnabled = discordGameDetectionEnabled.checked;
+    persistConfig({ discordGameDetectionEnabled: config.discordGameDetectionEnabled });
+  });
+  unknownGameFolderName?.addEventListener("input", () => {
+    const v = unknownGameFolderName.value.trim() || "Unknown";
+    config.unknownGameFolderName = v;
+    persistConfig({ unknownGameFolderName: v });
+  });
+  sanitizeGameNames?.addEventListener("change", () => {
+    config.sanitizeGameNames = sanitizeGameNames.checked;
+    persistConfig({ sanitizeGameNames: config.sanitizeGameNames });
+  });
+  discordDetectionMode?.addEventListener("change", () => {
+    config.discordDetectionMode = discordDetectionMode.value as "auto" | "manualOverride";
+    persistConfig({ discordDetectionMode: config.discordDetectionMode });
+    if (manualGameRow) manualGameRow.style.display = (config.discordDetectionMode === "manualOverride") ? "" : "none";
+  });
+  manualGameName?.addEventListener("input", () => {
+    config.manualGameName = manualGameName.value.trim();
+    persistConfig({ manualGameName: config.manualGameName });
+  });
+}
+
+function applyDiscordStatus(status: { connected: boolean; game: string | null }) {
+  const ind = document.getElementById("discordIndicator");
+  const gameEl = document.getElementById("discordGame");
+  const hintEl = document.getElementById("discordHint");
+  if (ind) {
+    ind.textContent = status.connected ? "Discord: Connected" : "Discord: Disconnected";
+    ind.classList.toggle("connected", status.connected);
+    ind.classList.toggle("disconnected", !status.connected);
+  }
+  if (gameEl) gameEl.textContent = "Detected game: " + (status.game ?? "None");
+  if (hintEl) hintEl.style.display = status.connected && !status.game ? "block" : "none";
 }
 
 function init() {
   getAPI().getConfig().then((c: AppConfig) => {
-    config = c;
+    config = {
+      ...c,
+      discordGameDetectionEnabled: c.discordGameDetectionEnabled ?? true,
+      unknownGameFolderName: c.unknownGameFolderName ?? "Unknown",
+      sanitizeGameNames: c.sanitizeGameNames ?? true,
+      discordDetectionMode: c.discordDetectionMode ?? "auto",
+      manualGameName: c.manualGameName ?? "",
+      recentGames: Array.isArray(c.recentGames) ? c.recentGames : [],
+    };
     renderFolderRows();
     bindSettings();
     reportWindowSize();
@@ -210,6 +274,13 @@ function init() {
         reportWindowSize(!setupBlock.open);
       });
     }
+    getAPI().discord.getStatus().then(applyDiscordStatus);
+    getAPI().discord.onGameChanged(applyDiscordStatus);
+    const refreshBtn = document.getElementById("discordRefresh");
+    refreshBtn?.addEventListener("click", () => {
+      getAPI().discord.refresh();
+      getAPI().discord.getStatus().then(applyDiscordStatus);
+    });
   }).catch((_e: unknown) => {
     document.getElementById("status")!.textContent = "Failed to load config.";
     showToast("Failed to load config", "error");

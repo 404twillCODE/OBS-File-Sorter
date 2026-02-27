@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+export type DiscordDetectionMode = "auto" | "manualOverride";
+
 export interface AppConfig {
   source_folder: string;
   backtrack_folder: string;
@@ -11,6 +13,17 @@ export interface AppConfig {
   auto_delete_folders: boolean;
   delete_length_days: number;
   runOnStartup: boolean;
+  discordGameDetectionEnabled: boolean;
+  unknownGameFolderName: string;
+  sanitizeGameNames: boolean;
+  discordDetectionMode: DiscordDetectionMode;
+  manualGameName: string;
+  recentGames: string[];
+}
+
+export interface DiscordStatus {
+  connected: boolean;
+  game: string | null;
 }
 
 const api = {
@@ -21,6 +34,15 @@ const api = {
   listVaultFolders: (): Promise<string[]> => ipcRenderer.invoke("listVaultFolders"),
   onVaultChanged: (fn: () => void) => {
     ipcRenderer.on("vault-changed", () => fn());
+  },
+  discord: {
+    getStatus: (): Promise<DiscordStatus> => ipcRenderer.invoke("discord-getStatus"),
+    refresh: (): Promise<void> => ipcRenderer.invoke("discord-refresh"),
+    onGameChanged: (fn: (status: DiscordStatus) => void) => {
+      const handler = (_: unknown, status: DiscordStatus) => fn(status);
+      ipcRenderer.on("discord-game-changed", handler);
+      return () => ipcRenderer.removeListener("discord-game-changed", handler);
+    },
   },
   windowMinimize: () => ipcRenderer.send("window-minimize"),
   windowClose: () => ipcRenderer.send("window-close"),

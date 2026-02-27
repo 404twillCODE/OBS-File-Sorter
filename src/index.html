@@ -24,6 +24,15 @@
       <section class="section">
         <div class="folder-rows" id="folderRows"></div>
       </section>
+      <section class="section discord-section" id="discordSection">
+        <div class="section-label">Discord game detection</div>
+        <div class="discord-status-row">
+          <span class="discord-indicator" id="discordIndicator">Discord: —</span>
+          <span class="discord-game" id="discordGame">Detected game: —</span>
+          <button type="button" class="btn-refresh" id="discordRefresh">Refresh</button>
+        </div>
+        <p class="discord-hint" id="discordHint">If your game isn't detected, use Settings → Discord game detection → Manual override.</p>
+      </section>
       <section class="section section-actions">
         <button type="button" class="btn btn-primary" id="sortBtn">Sort Clips</button>
         <button type="button" class="btn btn-secondary" id="settingsBtn">Settings</button>
@@ -73,6 +82,37 @@
             <span>Delete folders older than (days)</span>
             <input type="number" id="deleteLengthDays" min="1" max="365" value="14" />
           </label>
+        </fieldset>
+        <fieldset class="setting-group">
+          <legend>Discord game detection</legend>
+          <label class="toggle-row">
+            <span>Enable game detection (sort Clips/Backtrack into game-named subfolders)</span>
+            <input type="checkbox" id="discordGameDetectionEnabled" />
+            <span class="toggle"></span>
+          </label>
+          <label class="number-row">
+            <span>Folder name when game unknown</span>
+            <input type="text" id="unknownGameFolderName" placeholder="Unknown" spellcheck="false" />
+          </label>
+          <label class="toggle-row">
+            <span>Sanitize game names (Windows-safe folder names)</span>
+            <input type="checkbox" id="sanitizeGameNames" />
+            <span class="toggle"></span>
+          </label>
+          <div class="setting-row">
+            <span>Mode</span>
+            <select id="discordDetectionMode">
+              <option value="auto">Auto (use Discord detected game)</option>
+              <option value="manualOverride">Manual override</option>
+            </select>
+          </div>
+          <div class="manual-game-row" id="manualGameRow">
+            <label class="number-row">
+              <span>Manual game name</span>
+              <input type="text" id="manualGameName" placeholder="Game name" spellcheck="false" list="recentGamesList" />
+            </label>
+            <datalist id="recentGamesList"></datalist>
+          </div>
         </fieldset>
         <fieldset class="setting-group">
           <legend>Startup</legend>
