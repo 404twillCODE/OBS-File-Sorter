@@ -1,0 +1,30 @@
+name: Build Windows application
+on:
+  push:
+    branches: [main]
+    paths: ['windows/**', '.github/workflows/build-windows.yml']
+  pull_request:
+    paths: ['windows/**', '.github/workflows/build-windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build and test portable application
+        shell: pwsh
+        run: ./windows/build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OBS-File-Sorter-Windows
+          path: windows/out/OBS-File-Sorter-Windows.zip
+          if-no-files-found: error
+          retention-days: 90

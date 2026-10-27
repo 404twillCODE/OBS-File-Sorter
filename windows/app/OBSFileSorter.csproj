@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OBS File Sorter</AssemblyName><RootNamespace>OBSFileSorter</RootNamespace>
+    <ApplicationIcon Condition="Exists('Assets\App.ico')">Assets\App.ico</ApplicationIcon>
+    <Version>2.0.0</Version><Company>BEETOGLE</Company><Product>OBS File Sorter</Product>
+  </PropertyGroup>
+  <ItemGroup><Resource Include="Assets\App.ico" Condition="Exists('Assets\App.ico')" /></ItemGroup>
+</Project>

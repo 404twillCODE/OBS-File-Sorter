@@ -1,0 +1,16 @@
+{
+  "original_executable": "OBS_File_Sorter.exe",
+  "sha256": "fbefe5b9ab8552ad9a344aa219d032826e1ed4da7a8fc6a8a046c1ace5319f08",
+  "methods": {
+    "create_vault_folders": "ab29887009b16bdf8cf01002e7ee75444c867cc106c33b7a3712eef24584746c",
+    "sync_vault_files": "734e9c12c135c499208c92a72bdf076d30e76e7b7e174df46845c2ecd8cff5fc",
+    "run_sorter": "cf973d2e4dcd4b6a7d4eea16af218fb2add022bb8fae66fe888d94c921f572db",
+    "get_video_length": "d0ea6a62dfbd4cf26a2995972b1ceafc5dd24f00fc57b57c840d7744feaabbae",
+    "delayed_sort": "70c32c60116291c4008223be098ebfa034028e718df0b11d9584493ac24208f9",
+    "listen_for_hotkeys": "8c6b6527b90c217215895bafd0ef15e897cf8fe7e86500021174c504122e9d78",
+    "auto_delete_files": "d3c3ce519a79442776046a34ad647cc8941d7499e10f591706b2c1bc8f97da9e",
+    "delete_old_folders": "2ebbb5d3313e207350d3705aa3a9e325def00c19f7b8f0e1e5931d6321986ff6",
+    "monitor_vault_folders": "67bba42ceec54319612d773fd48f8fc7bda195105095df01b90d91ee0d846803"
+  },
+  "methods_file_sha256": "7c498cc6f6cc3ae9fd6c1c3815eb298231aced39279e45be04d557ff8ebb0ae9"
+}
